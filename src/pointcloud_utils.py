@@ -1,11 +1,22 @@
 import numpy as np
 import open3d as o3d
 
+def subdivide_recursive(bbox, n_levels, result):
+    """
+    Recursive subdivision of pointcloud bbox, `n_levels` times
+    # of subdivisions = 8 (for level1) + 8**2 (for level2) + ... + 8**n (for level n)
+    """
+    if n_levels == 0:
+        return
 
-def subdivide(pointcloud):
-    # bounding from pointcloud
-    bbox = pointcloud.get_axis_aligned_bounding_box()
+    sub_bboxes = subdivide(bbox)
+    result.extend(sub_bboxes)
 
+    for sub_bbox in sub_bboxes:
+        subdivide_recursive(sub_bbox, n_levels - 1, result)
+
+
+def subdivide(bbox):
     # center & bbox radius in all directions
     center = bbox.get_center()
     half_extent = bbox.get_half_extent()
@@ -76,22 +87,29 @@ def subdivide(pointcloud):
 
 def downsample(pointcloud, sub_bboxes):
     """
-    Pointclouds by averaging `pointcloud` points inside each sub-bbox
+    Pointcloud by averaging `pointcloud` points inside each sub-bbox
     """
     pointclouds_avgs = []
+    points, colors = [], []
+
     for sub_bbox in sub_bboxes:
         # crop pointcloud (keep points inside sub-bbox)
         pointcloud_cropped = pointcloud.crop(sub_bbox)
         points_cropped = np.asarray(pointcloud_cropped.points)
-        print(f'point_cropped: {points_cropped.shape}')
+        colors_cropped = np.asarray(pointcloud_cropped.colors)
+
         if len(points_cropped) == 0:
             continue
 
         # average cropped points
         point_avg = np.average(points_cropped, axis=0)
-        print(f'point_avg: {point_avg.reshape(-1, 1)}')
-        point_avg_vector = o3d.utility.Vector3dVector(np.expand_dims(point_avg, axis=0))
-        pointcloud_avg = o3d.geometry.PointCloud(points=point_avg_vector)
-        pointclouds_avgs.append(pointcloud_avg)
+        color_avg = np.average(colors_cropped, axis=0)
+        points.append(point_avg)
+        colors.append(color_avg)
 
-    return pointclouds_avgs
+    points_vector = o3d.utility.Vector3dVector(np.array(points))
+    colors_vector = o3d.utility.Vector3dVector(np.array(colors))
+    pointcloud_avg = o3d.geometry.PointCloud(points=points_vector)
+    pointcloud_avg.colors = colors_vector
+
+    return pointcloud_avg
